@@ -8,15 +8,15 @@
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: system-ui, sans-serif;
-      background: #111;
-      color: #eee;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0a0a0a;
+      color: #fafafa;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 1.25rem;
+      padding: 1.5rem 1.25rem 2rem;
     }
     .wrap {
       width: 100%;
@@ -27,26 +27,44 @@
       text-align: center;
     }
     h1 {
-      font-size: 1.5rem;
-      font-weight: 600;
-      margin: 0 0 0.5rem;
-      letter-spacing: 0.02em;
+      font-size: 1.65rem;
+      font-weight: 700;
+      margin: 0 0 0.65rem;
+      letter-spacing: 0.03em;
+      color: #fff;
     }
-    .instruction {
-      font-size: 0.95rem;
-      opacity: 0.85;
-      margin: 0 0 1rem;
+    .instruction-box {
+      margin-bottom: 1.35rem;
+      padding: 0 0.5rem;
+    }
+    .instruction-primary {
+      font-size: 1.05rem;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.92);
+      margin: 0 0 0.55rem;
+      line-height: 1.5;
+      max-width: 28rem;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .instruction-secondary {
+      font-size: 0.88rem;
+      color: rgba(255, 255, 255, 0.65);
+      margin: 0;
       line-height: 1.45;
-      max-width: 36rem;
+      max-width: 32rem;
+      margin-left: auto;
+      margin-right: auto;
     }
     .stage {
       position: relative;
       width: min(640px, 100%);
       aspect-ratio: 4 / 3;
       background: #000;
-      border-radius: 12px;
+      border-radius: 14px;
       overflow: hidden;
-      border: 1px solid #333;
+      border: 1px solid #2a2a2a;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
     }
     video, canvas { display: block; width: 100%; height: 100%; object-fit: cover; }
     video { transform: scaleX(-1); }
@@ -62,44 +80,87 @@
     .guide-box {
       width: 55%;
       height: 72%;
-      border: 3px dashed rgba(120, 200, 255, 0.75);
+      border: 3px dashed rgba(130, 210, 255, 0.85);
       border-radius: 12px;
-      box-shadow: 0 0 0 9999px rgba(0,0,0,0.25);
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.28);
+    }
+    .result-wrap {
+      margin-top: 1.75rem;
+      min-height: 4.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.5rem 1rem;
+      width: 100%;
     }
     .result {
-      margin-top: 1.25rem;
-      font-size: 2.25rem;
+      font-size: 28px;
       font-weight: 700;
-      min-height: 2.75rem;
+      text-align: center;
+      line-height: 1.35;
       letter-spacing: 0.02em;
+      max-width: 100%;
+      transition: color 0.2s ease, transform 0.2s ease;
     }
-    .result.locked { color: #7cf; }
+    .result.detecting {
+      font-size: 26px;
+      color: rgba(255, 255, 255, 0.45);
+      font-weight: 600;
+    }
+    .result.live {
+      color: #fff;
+    }
+    .result.nohand {
+      font-size: 26px;
+      color: #f87171;
+      font-weight: 700;
+    }
+    .result.error {
+      font-size: 1.1rem;
+      color: #fca5a5;
+      font-weight: 600;
+    }
+    .result.final {
+      font-size: 34px;
+      font-weight: 800;
+      color: #4ade80;
+      text-shadow: 0 0 24px rgba(74, 222, 128, 0.25);
+    }
     button {
-      margin-top: 1.25rem;
-      padding: 0.55rem 1.25rem;
-      border-radius: 8px;
-      border: 1px solid #555;
-      background: #2a2a2a;
-      color: #eee;
+      margin-top: 1.75rem;
+      padding: 0.65rem 1.5rem;
+      border-radius: 10px;
+      border: 1px solid #444;
+      background: #1f1f1f;
+      color: #fafafa;
       font-size: 1rem;
+      font-weight: 600;
       cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease;
     }
-    button:hover { background: #333; }
+    button:hover {
+      background: #2a2a2a;
+      border-color: #555;
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
     <h1>Live Mudra Detection</h1>
-    <p class="instruction">
-      Hold your hand steady in the frame. Press <strong>Reset</strong> to clear the session and start fresh
-      (starts the camera the first time if it is not already on).
-    </p>
+    <div class="instruction-box">
+      <p class="instruction-primary">Place your hand inside the box and hold steady</p>
+      <p class="instruction-secondary">
+        Press <strong>Reset</strong> to clear the session and start fresh (starts the camera the first time if it is not already on).
+      </p>
+    </div>
     <div class="stage">
       <video id="video" playsinline autoplay muted></video>
       <canvas id="canvas"></canvas>
       <div class="guide"><div class="guide-box"></div></div>
     </div>
-    <div class="result" id="mainPred">Detecting...</div>
+    <div class="result-wrap">
+      <div class="result detecting" id="mainPred">Detecting...</div>
+    </div>
     <button type="button" id="btnReset">Reset</button>
   </div>
   <script>
@@ -117,6 +178,7 @@
     const MAJORITY_STRONG = 4;
     const UNSTABLE_MS = 3000;
     const MIN_CONF_FOR_VOTE = 0.2;
+    const NULL_STREAK_TO_NOHAND = 3;
 
     function cleanMudraLabel(s) {
       if (s == null || typeof s !== 'string') return s;
@@ -132,6 +194,17 @@
     let lastStableMudra = null;
     let unstableSince = null;
 
+    let lastRenderedKey = '';
+    let nullStreak = 0;
+
+    function setResultDisplay(text, mode) {
+      const key = mode + '|' + text;
+      if (key === lastRenderedKey) return;
+      lastRenderedKey = key;
+      mainPred.textContent = text;
+      mainPred.className = 'result ' + mode;
+    }
+
     function applyFullResetUI() {
       recent.length = 0;
       lockedMudra = null;
@@ -139,8 +212,9 @@
       lastMudra = null;
       unstableSince = null;
       lastStableMudra = null;
-      mainPred.textContent = 'Detecting...';
-      mainPred.classList.remove('locked');
+      nullStreak = 0;
+      lastRenderedKey = '';
+      setResultDisplay('Detecting...', 'detecting');
     }
 
     function majorityStats(arr) {
@@ -195,17 +269,25 @@
         const res = await fetch(`${API_BASE}/mudra/predict-frame`, { method: 'POST', body: fd });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          mainPred.textContent =
+          nullStreak = 0;
+          const err =
             res.status === 503 && data.detail ? String(data.detail) : `Error (${res.status})`;
-          mainPred.classList.remove('locked');
+          setResultDisplay(err, 'error');
           return;
         }
+
         const mudraRaw = data.mudra;
         const conf = typeof data.confidence === 'number' ? data.confidence : 0;
 
-        if (mudraRaw == null) {
+        if (mudraRaw == null || String(mudraRaw).trim() === '' || String(mudraRaw) === 'No Hand') {
+          nullStreak += 1;
+          if (lockedMudra == null && nullStreak >= NULL_STREAK_TO_NOHAND) {
+            setResultDisplay('No hand detected ❌', 'nohand');
+          }
           return;
         }
+
+        nullStreak = 0;
         const mudra = cleanMudraLabel(String(mudraRaw));
 
         if (conf >= MIN_CONF_FOR_VOTE) {
@@ -230,16 +312,24 @@
         }
 
         if (lockedMudra != null) {
-          mainPred.textContent = cleanMudraLabel(lockedMudra);
-          mainPred.classList.add('locked');
+          const name = cleanMudraLabel(lockedMudra);
+          setResultDisplay(` ${name} `, 'final');
         } else {
-          const shown = displayMaj && displayMaj.length ? cleanMudraLabel(displayMaj) : '';
-          mainPred.textContent = shown && shown.length ? shown : 'Detecting...';
-          mainPred.classList.remove('locked');
+          const nameVote =
+            displayMaj && String(displayMaj).length
+              ? cleanMudraLabel(String(displayMaj))
+              : mudra && mudra.length
+                ? mudra
+                : '';
+          if (nameVote && nameVote.length) {
+            setResultDisplay(`${nameVote} (${conf.toFixed(2)})`, 'live');
+          } else {
+            setResultDisplay('Detecting...', 'detecting');
+          }
         }
       } catch (e) {
-        mainPred.textContent = 'Network error';
-        mainPred.classList.remove('locked');
+        nullStreak = 0;
+        setResultDisplay('Network error', 'error');
       }
     }
 
@@ -259,8 +349,7 @@
         await video.play();
         return true;
       } catch (e) {
-        mainPred.textContent = 'Camera unavailable';
-        mainPred.classList.remove('locked');
+        setResultDisplay('Camera unavailable', 'error');
         return false;
       }
     }
