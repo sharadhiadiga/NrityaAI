@@ -1,0 +1,22 @@
+{
+    "Ardhamandalam": {
+        "knee": 91.67,
+        "spine": 108.95,
+        "elbow": 169.5
+    },
+    "Muzhumandi": {
+        "knee": 46.07,
+        "spine": 111.13,
+        "elbow": 148.5
+    },
+    "Nataraj": {
+        "knee": 115.46,
+        "spine": 105.04,
+        "elbow": 136.41
+    },
+    "Samapadam": {
+        "knee": 143.72,
+        "spine": 142.41,
+        "elbow": 65.88
+    }
+}
