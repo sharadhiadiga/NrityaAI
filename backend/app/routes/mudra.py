@@ -1,100 +1,111 @@
-from fastapi import APIRouter, UploadFile, File
-import numpy as np
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
 import cv2
-import logging
+import joblib
+import numpy as np
+from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from app.services.mediapipe_service import extract_hand_landmarks
-from app.services.feature_extractor import extract_features
-from app.services import mudra_model
+from app.services.feature_extractor import FEATURE_VECTOR_SIZE
+from app.services.mediapipe_service import MediaPipeHandService
 
-logger = logging.getLogger(__name__)
+router = APIRouter(tags=["mudra"])
 
-router = APIRouter(prefix="/mudra", tags=["mudra"])
-
-# Load model on startup
-mudra_model.load_model()
-
-
-@router.post("/detect-hand")
-async def detect_hand(file: UploadFile = File(...)):
-    """Detect hand landmarks from an uploaded image."""
-    
-    contents = await file.read()
-
-    np_arr = np.frombuffer(contents, np.uint8)
-    image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-
-    hands_landmarks = extract_hand_landmarks(image)
-
-    return {
-        "hands_detected": len(hands_landmarks),
-        "landmarks": hands_landmarks
-    }
+_MODEL: Any = None
+_LABEL_ENCODER: Any = None
+_SERVICE: MediaPipeHandService | None = None
 
 
-@router.post("/predict-mudra")
-async def predict_mudra(file: UploadFile = File(...)):
-    """Predict mudra class from an uploaded hand image."""
-    
-    try:
-        contents = await file.read()
+def _models_dir() -> Path:
+    return Path(__file__).resolve().parent.parent / "models"
 
-        np_arr = np.frombuffer(contents, np.uint8)
-        image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
-        # Step 1: Extract landmarks
-        hands_landmarks = extract_hand_landmarks(image)
+def load_model() -> None:
+    global _MODEL, _LABEL_ENCODER
+    model_path = _models_dir() / "mudra_model.pkl"
+    if not model_path.is_file():
+        raise FileNotFoundError(f"Missing model: {model_path}. Run app.train_model first.")
+    bundle = joblib.load(model_path)
+    if isinstance(bundle, dict) and "model" in bundle:
+        _MODEL = bundle["model"]
+        _LABEL_ENCODER = bundle.get("label_encoder")
+        fd = bundle.get("feature_dim")
+        if fd is not None and int(fd) != FEATURE_VECTOR_SIZE:
+            raise ValueError(
+                f"Model feature_dim {fd} != current FEATURE_VECTOR_SIZE {FEATURE_VECTOR_SIZE}. Retrain."
+            )
+    else:
+        _MODEL = bundle
+        _LABEL_ENCODER = None
 
-        if not hands_landmarks:
-            return {
-                "error": "No hand detected",
-                "mudra": None,
-                "confidence": None
-            }
 
-        # Step 2: Use first detected hand
-        landmarks = hands_landmarks[0]
+def ensure_hand_service() -> None:
+    global _SERVICE
+    if _SERVICE is None:
+        _SERVICE = MediaPipeHandService()
 
-        # Step 3: Extract features
-        features = extract_features(landmarks)
 
-        if features is None:
-            return {
-                "error": "Could not extract features",
-                "mudra": None,
-                "confidence": None
-            }
+def load_artifacts() -> None:
+    load_model()
+    ensure_hand_service()
 
-        # Step 4: Predict
-        mudra_label, confidence = mudra_model.predict_mudra(features)
 
-        if mudra_label is None:
-            return {
-                "error": "Model prediction failed",
-                "mudra": None,
-                "confidence": None
-            }
+def unload_artifacts() -> None:
+    global _SERVICE
+    if _SERVICE is not None:
+        try:
+            _SERVICE.close()
+        except Exception:
+            pass
+        _SERVICE = None
 
-        # Step 5: Clean label
-        mudra_label = mudra_label.split("(")[0]
 
-        # Step 6: Confidence threshold
-        if confidence < 0.6:
-            return {
-                "mudra": "Unknown",
-                "confidence": confidence
-            }
+@router.get("/mudra/labels")
+def list_labels() -> dict:
+    """Class names for live-accuracy dropdown (from last training export)."""
+    p = _models_dir() / "label_map.json"
+    if not p.is_file():
+        return {"classes": []}
+    data = json.loads(p.read_text(encoding="utf-8"))
+    classes = data.get("classes") or []
+    return {"classes": classes}
 
-        # Step 7: Final response
-        return {
-            "mudra": mudra_label,
-            "confidence": confidence
-        }
 
-    except Exception as e:
-        logger.error(f"Error in predict_mudra: {e}")
-        return {
-            "error": str(e),
-            "mudra": None,
-            "confidence": None
-        }
+@router.post("/mudra/predict-frame")
+async def predict_frame(file: UploadFile = File(...)) -> dict:
+    if _MODEL is None:
+        try:
+            load_model()
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=503, detail=str(e)) from e
+    ensure_hand_service()
+
+    raw = await file.read()
+    if not raw:
+        return {"mudra": None, "confidence": 0.0}
+
+    arr = np.frombuffer(raw, dtype=np.uint8)
+    bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if bgr is None:
+        return {"mudra": None, "confidence": 0.0}
+
+    feat = _SERVICE.feature_vector_from_bgr(bgr)
+    if feat is None:
+        return {"mudra": None, "confidence": 0.0}
+
+    if feat.shape[0] != FEATURE_VECTOR_SIZE:
+        raise HTTPException(status_code=500, detail="feature dimension mismatch")
+
+    proba = _MODEL.predict_proba(feat.reshape(1, -1))[0]
+    idx = int(np.argmax(proba))
+    confidence = float(proba[idx])
+
+    if _LABEL_ENCODER is not None:
+        label = str(_LABEL_ENCODER.inverse_transform(np.array([idx]))[0])
+    else:
+        label = str(_MODEL.classes_[idx])
+
+    return {"mudra": label, "confidence": confidence}

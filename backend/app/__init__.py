@@ -1,0 +1,1 @@
+"""NrityaAI backend app package."""

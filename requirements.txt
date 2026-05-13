@@ -1,0 +1,10 @@
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.9
+# NumPy 2.x breaks binary builds of pandas<2.2 and tensorflow's numpy<2 pin.
+numpy>=1.24.0,<2.0.0
+# OpenCV 4.13+ requires NumPy 2 on Python 3.9+; keep a 4.12.x line for NumPy 1.x stacks.
+opencv-python-headless>=4.8.0,<4.13
+mediapipe>=0.10.9
+scikit-learn>=1.3.0
+joblib>=1.3.0
