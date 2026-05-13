@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Bharatanatyam mudra — webcam</title>
+  <title>Live Mudra Detection</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -15,35 +15,36 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 1rem;
+      justify-content: center;
+      padding: 1.25rem;
     }
-    h1 { font-size: 1.1rem; font-weight: 600; margin: 0 0 0.75rem; }
-    .row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin-bottom: 0.75rem; }
-    label { font-size: 0.85rem; opacity: 0.9; }
-    select, input[type="text"] {
-      padding: 0.4rem 0.5rem;
-      border-radius: 6px;
-      border: 1px solid #444;
-      background: #1a1a1a;
-      color: #eee;
-      max-width: min(280px, 85vw);
+    .wrap {
+      width: 100%;
+      max-width: 720px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
     }
-    input[type="text"] { width: min(420px, 90vw); max-width: none; }
-    button {
-      padding: 0.45rem 0.75rem;
-      border-radius: 6px;
-      border: 1px solid #555;
-      background: #2a2a2a;
-      color: #eee;
-      cursor: pointer;
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin: 0 0 0.5rem;
+      letter-spacing: 0.02em;
     }
-    button:hover { background: #333; }
+    .instruction {
+      font-size: 0.95rem;
+      opacity: 0.85;
+      margin: 0 0 1rem;
+      line-height: 1.45;
+      max-width: 36rem;
+    }
     .stage {
       position: relative;
-      width: min(640px, 92vw);
+      width: min(640px, 100%);
       aspect-ratio: 4 / 3;
       background: #000;
-      border-radius: 10px;
+      border-radius: 12px;
       overflow: hidden;
       border: 1px solid #333;
     }
@@ -65,67 +66,50 @@
       border-radius: 12px;
       box-shadow: 0 0 0 9999px rgba(0,0,0,0.25);
     }
-    .hud {
-      margin-top: 1rem;
-      text-align: center;
-      max-width: 640px;
+    .result {
+      margin-top: 1.25rem;
+      font-size: 2.25rem;
+      font-weight: 700;
+      min-height: 2.75rem;
+      letter-spacing: 0.02em;
     }
-    .mudra-main { font-size: 1.75rem; font-weight: 700; letter-spacing: 0.02em; }
-    .mudra-sub { font-size: 0.9rem; opacity: 0.75; margin-top: 0.35rem; }
-    .accuracy-line {
-      font-size: 1.05rem;
-      font-weight: 600;
-      color: #9d6;
-      margin-top: 0.6rem;
+    .result.locked { color: #7cf; }
+    button {
+      margin-top: 1.25rem;
+      padding: 0.55rem 1.25rem;
+      border-radius: 8px;
+      border: 1px solid #555;
+      background: #2a2a2a;
+      color: #eee;
+      font-size: 1rem;
+      cursor: pointer;
     }
-    .status { font-size: 0.8rem; color: #888; margin-top: 0.5rem; }
-    .locked { color: #7cf; }
-    .fallback { color: #fa8; font-size: 0.85rem; }
+    button:hover { background: #333; }
   </style>
 </head>
 <body>
-  <h1>Bharatanatyam mudra (webcam)</h1>
-  <div class="row">
-    <label>API base <input type="text" id="baseUrl" value="http://127.0.0.1:8000" /></label>
-    <button type="button" id="btnReloadLabels">Load labels</button>
-    <button type="button" id="btnStart">Start camera</button>
-    <button type="button" id="btnUnlock" disabled>Unlock prediction</button>
-  </div>
-  <div class="row">
-    <label>Expected mudra (live accuracy)
-      <select id="expectedMudra">
-        <option value="">— none —</option>
-      </select>
-    </label>
-    <button type="button" id="btnResetAcc">Reset accuracy</button>
-  </div>
-  <div class="stage">
-    <video id="video" playsinline autoplay muted></video>
-    <canvas id="canvas"></canvas>
-    <div class="guide"><div class="guide-box"></div></div>
-  </div>
-  <div class="hud">
-    <div class="mudra-main" id="mainPred">—</div>
-    <div class="mudra-sub" id="subPred">Majority (last 7): —</div>
-    <div class="accuracy-line" id="accLine">Live accuracy: —</div>
-    <div class="fallback" id="fallbackNote"></div>
-    <div class="status" id="status">Camera off</div>
+  <div class="wrap">
+    <h1>Live Mudra Detection</h1>
+    <p class="instruction">
+      Hold your hand steady in the frame. Press <strong>Reset</strong> to clear the session and start fresh
+      (starts the camera the first time if it is not already on).
+    </p>
+    <div class="stage">
+      <video id="video" playsinline autoplay muted></video>
+      <canvas id="canvas"></canvas>
+      <div class="guide"><div class="guide-box"></div></div>
+    </div>
+    <div class="result" id="mainPred">Detecting...</div>
+    <button type="button" id="btnReset">Reset</button>
   </div>
   <script>
+    const API_BASE = 'http://127.0.0.1:8000';
+
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    const baseUrlInput = document.getElementById('baseUrl');
-    const btnStart = document.getElementById('btnStart');
-    const btnUnlock = document.getElementById('btnUnlock');
-    const btnReloadLabels = document.getElementById('btnReloadLabels');
-    const btnResetAcc = document.getElementById('btnResetAcc');
-    const expectedSelect = document.getElementById('expectedMudra');
+    const btnReset = document.getElementById('btnReset');
     const mainPred = document.getElementById('mainPred');
-    const subPred = document.getElementById('subPred');
-    const accLine = document.getElementById('accLine');
-    const statusEl = document.getElementById('status');
-    const fallbackNote = document.getElementById('fallbackNote');
 
     const INTERVAL_MS = 400;
     const VOTE_WINDOW = 7;
@@ -143,45 +127,15 @@
     let lastStableMudra = null;
     let unstableSince = null;
 
-    let liveTotal = 0;
-    let liveCorrect = 0;
-
-    function base() {
-      return baseUrlInput.value.replace(/\/$/, '');
-    }
-
-    function updateAccDisplay() {
-      if (liveTotal === 0) {
-        accLine.textContent = expectedSelect.value
-          ? 'Live accuracy: — (0 frames scored)'
-          : 'Live accuracy: — (choose expected mudra)';
-        return;
-      }
-      const pct = Math.round((100 * liveCorrect) / liveTotal);
-      accLine.textContent = `Live accuracy: ${pct}% (${liveCorrect}/${liveTotal})`;
-    }
-
-    async function loadLabels() {
-      const sel = expectedSelect;
-      const keep = sel.value;
-      try {
-        const res = await fetch(`${base()}/mudra/labels`);
-        const data = await res.json().catch(() => ({}));
-        const classes = Array.isArray(data.classes) ? data.classes : [];
-        sel.innerHTML = '<option value="">— none —</option>';
-        for (const c of classes) {
-          const o = document.createElement('option');
-          o.value = c;
-          o.textContent = c;
-          sel.appendChild(o);
-        }
-        if (classes.includes(keep)) sel.value = keep;
-        statusEl.textContent = classes.length
-          ? `Loaded ${classes.length} class labels`
-          : 'No labels (train model first)';
-      } catch (e) {
-        statusEl.textContent = 'Could not load /mudra/labels';
-      }
+    function applyFullResetUI() {
+      recent.length = 0;
+      lockedMudra = null;
+      streak = 0;
+      lastMudra = null;
+      unstableSince = null;
+      lastStableMudra = null;
+      mainPred.textContent = 'Detecting...';
+      mainPred.classList.remove('locked');
     }
 
     function majorityStats(arr) {
@@ -211,7 +165,6 @@
     }
 
     function pickDisplayMajority(majLabel, majCount, now) {
-      fallbackNote.textContent = '';
       const unstable =
         recent.length >= VOTE_WINDOW && majCount < MAJORITY_STRONG;
       if (!unstable) {
@@ -221,7 +174,6 @@
       }
       if (unstableSince == null) unstableSince = now;
       if (lastStableMudra != null && now - unstableSince >= UNSTABLE_MS) {
-        fallbackNote.textContent = `Unstable ${(UNSTABLE_MS / 1000).toFixed(0)}s — showing last stable`;
         return lastStableMudra;
       }
       return majLabel;
@@ -234,30 +186,20 @@
       const fd = new FormData();
       fd.append('file', blob, 'frame.jpg');
       const now = performance.now();
-      const expected = (expectedSelect.value || '').trim();
       try {
-        const res = await fetch(`${base()}/mudra/predict-frame`, { method: 'POST', body: fd });
+        const res = await fetch(`${API_BASE}/mudra/predict-frame`, { method: 'POST', body: fd });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          statusEl.textContent = res.status === 503 && data.detail
-            ? String(data.detail)
-            : `HTTP ${res.status}`;
+          mainPred.textContent =
+            res.status === 503 && data.detail ? String(data.detail) : `Error (${res.status})`;
+          mainPred.classList.remove('locked');
           return;
         }
         const mudra = data.mudra;
         const conf = typeof data.confidence === 'number' ? data.confidence : 0;
 
         if (mudra == null) {
-          statusEl.textContent = 'No hand — center in guide box';
           return;
-        }
-
-        statusEl.textContent = `Last frame: ${mudra} (${(conf * 100).toFixed(1)}%)`;
-
-        if (expected && conf >= MIN_CONF_FOR_VOTE) {
-          liveTotal += 1;
-          if (mudra === expected) liveCorrect += 1;
-          updateAccDisplay();
         }
 
         if (conf >= MIN_CONF_FOR_VOTE) {
@@ -277,55 +219,25 @@
             }
             if (streak >= LOCK_STREAK) {
               lockedMudra = mudra;
-              btnUnlock.disabled = false;
             }
           }
         }
 
-        subPred.textContent = `Majority (last ${VOTE_WINDOW}): ${maj || '—'}`;
-
         if (lockedMudra != null) {
-          mainPred.innerHTML = `<span class="locked">${lockedMudra}</span> <small>(locked)</small>`;
+          mainPred.textContent = lockedMudra;
+          mainPred.classList.add('locked');
         } else {
-          mainPred.textContent = displayMaj || '—';
+          mainPred.textContent = displayMaj && displayMaj.length ? displayMaj : 'Detecting...';
+          mainPred.classList.remove('locked');
         }
       } catch (e) {
-        statusEl.textContent = 'Network error — is the API running?';
+        mainPred.textContent = 'Network error';
+        mainPred.classList.remove('locked');
       }
     }
 
-    btnReloadLabels.addEventListener('click', loadLabels);
-    baseUrlInput.addEventListener('change', loadLabels);
-
-    btnResetAcc.addEventListener('click', () => {
-      liveTotal = 0;
-      liveCorrect = 0;
-      updateAccDisplay();
-    });
-
-    btnUnlock.addEventListener('click', () => {
-      lockedMudra = null;
-      streak = 0;
-      lastMudra = null;
-      recent.length = 0;
-      unstableSince = null;
-      lastStableMudra = null;
-      btnUnlock.disabled = true;
-      mainPred.textContent = '—';
-      subPred.textContent = 'Majority (last 7): —';
-      fallbackNote.textContent = '';
-    });
-
-    btnStart.addEventListener('click', async () => {
-      if (timer) {
-        clearInterval(timer);
-        timer = null;
-      }
-      if (stream) {
-        stream.getTracks().forEach((t) => t.stop());
-        stream = null;
-      }
-      await loadLabels();
+    async function ensureCamera() {
+      if (stream) return true;
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
@@ -338,15 +250,21 @@
         });
         video.srcObject = stream;
         await video.play();
-        statusEl.textContent = 'Streaming…';
-        timer = setInterval(tick, INTERVAL_MS);
+        return true;
       } catch (e) {
-        statusEl.textContent = 'Camera permission denied or unavailable.';
+        mainPred.textContent = 'Camera unavailable';
+        mainPred.classList.remove('locked');
+        return false;
       }
-    });
+    }
 
-    updateAccDisplay();
-    loadLabels();
+    btnReset.addEventListener('click', async () => {
+      applyFullResetUI();
+      const ok = await ensureCamera();
+      if (!ok) return;
+      if (timer) clearInterval(timer);
+      timer = setInterval(tick, INTERVAL_MS);
+    });
   </script>
 </body>
 </html>
