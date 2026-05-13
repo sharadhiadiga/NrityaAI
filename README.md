@@ -27,7 +27,7 @@ Database: SQLite, JSON
 
 ## 🛠️ Setup
 ```bash
-git clone <your-repo-link>
+git clone https://github.com/sharadhiadiga/NrityaAI.git
 cd NrityaAI
 pip install -r requirements.txt
 ```
